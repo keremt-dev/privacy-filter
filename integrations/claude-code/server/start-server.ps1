@@ -10,7 +10,7 @@
 param(
     [switch]$Background,
     [int]$Port = 8765,
-    [string]$Host = "127.0.0.1"
+    [string]$BindHost = "127.0.0.1"  # renamed from $Host (PowerShell reserves $Host)
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,7 +24,7 @@ if (-not (Test-Path $venvActivate)) {
 
 . $venvActivate
 
-$env:UVICORN_HOST = $Host
+$env:UVICORN_HOST = $BindHost
 $env:UVICORN_PORT = "$Port"
 Push-Location $PSScriptRoot
 try {
@@ -32,12 +32,12 @@ try {
         $pidFile = Join-Path $root ".server.pid"
         $logFile = Join-Path $root ".server.log"
         $proc = Start-Process -FilePath "python" `
-            -ArgumentList @("-m", "uvicorn", "pii_server:app", "--host", $Host, "--port", $Port) `
+            -ArgumentList @("-m", "uvicorn", "pii_server:app", "--host", $BindHost, "--port", $Port) `
             -PassThru -WindowStyle Hidden -RedirectStandardOutput $logFile -RedirectStandardError $logFile
         $proc.Id | Set-Content $pidFile
         Write-Output "Server started (PID $($proc.Id)). Log: $logFile"
     } else {
-        python -m uvicorn pii_server:app --host $Host --port $Port
+        python -m uvicorn pii_server:app --host $BindHost --port $Port
     }
 } finally {
     Pop-Location
