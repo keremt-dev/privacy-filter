@@ -1,0 +1,26 @@
+# Örnek: aggressive politika (tüm PII bloklanır)
+# Kullanım: bu dosyayı projenin .claude/pii-policy.yaml olarak kopyala.
+
+server:
+  url: "http://127.0.0.1:8765"
+  timeout_ms: 5000
+  auto_start: true
+
+categories:
+  secret: block
+  account_number: block
+  private_person: block
+  private_email: block
+  private_phone: block
+  private_address: block
+  private_url: warn
+  private_date: warn
+
+confidence_threshold: 0.80
+min_prompt_length: 10
+fail_open: false
+
+audit:
+  enabled: true
+  dir: "~/.claude-pii-audit"
+  rotate_days: 90
