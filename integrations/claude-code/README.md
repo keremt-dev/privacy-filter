@@ -1,73 +1,158 @@
 # Claude Code Hook — OpenAI Privacy Filter
 
-OpenAI Privacy Filter (Apache 2.0) modelini Claude Code'a `UserPromptSubmit` hook'u olarak bağlayan, **proje-bazlı kurulabilen**, **politika yapılandırılabilir** bir entegrasyon.
+Wires the OpenAI Privacy Filter (Apache 2.0) into [Claude Code](https://claude.ai/code) as a
+`UserPromptSubmit` hook so that every user prompt is scanned for PII before it leaves your
+machine for the Anthropic API.
 
-> Bu klasör, bu repository fork'unda `openai/privacy-filter` üst projesinin **community integration**'ı olarak yer alır. Model ve ana kütüphane upstream'e aittir (Apache 2.0); buradaki entegrasyon kodu Apache 2.0 lisansı altında ek olarak sunulur. Path örneklerinde `$REPO` repo'nun klonlandığı dizini ifade eder.
+> This folder is a **community integration** living inside a fork of `openai/privacy-filter`.
+> The model and the `opf/` library belong to OpenAI (Apache 2.0). The integration code here is
+> released under the same license. In path examples below, `$REPO` is the directory where this
+> repository is cloned (e.g. `C:/kt/privacy-filter`).
 
-## Ne Yapar?
+---
 
-Her Claude Code prompt'u yerel bir Privacy Filter sunucusundan geçer. PII tespit edildiğinde:
+## What It Does
 
-- **Block** (default: `secret`, `account_number`) → prompt iptal edilir (`exit 2`).
-- **Warn** (default: `private_person`, `private_email`, `private_phone`, `private_address`) → Claude'a `additionalContext` ile uyarı enjekte edilir; audit log yazılır.
-- **Ignore** (default: `private_url`, `private_date`) → görmezden gelinir.
+Every prompt you type into Claude Code is intercepted by a local hook that calls a small
+FastAPI server running the Privacy Filter model. Each detection is then evaluated against a
+**policy file**:
 
-Tüm tespitler `~/.claude-pii-audit/YYYY-MM-DD.jsonl` dosyasına yazılır. **Prompt içeriği log'a yazılmaz** — sadece SHA-256 hash + kategori + count + timestamp.
+| Action      | Default categories                                                        | Behavior                                                              |
+|-------------|---------------------------------------------------------------------------|-----------------------------------------------------------------------|
+| **block**   | `secret`, `account_number`                                                | Hook exits `2`. Prompt is cancelled before it reaches Anthropic.      |
+| **warn**    | `private_person`, `private_email`, `private_phone`, `private_address`     | Hook injects an `additionalContext` warning so Claude is told.        |
+| **ignore**  | `private_url`, `private_date`                                             | Detection is recorded in the audit log only.                          |
 
-## Mimari Sınırı
+All decisions are appended to `~/.claude-pii-audit/YYYY-MM-DD.jsonl`. **The raw prompt is
+never written to disk** — only a SHA-256 hash plus categories, counts, and timestamp.
 
-Claude Code hook sistemi **prompt'u değiştiremez** ve **LLM response'unu intercept edemez**. Bu nedenle hook ile **gerçek iki-yönlü maskeleme imkansızdır**. Bu proje *detection + selective blocking + audit* yaklaşımıdır.
+---
 
-Gerçek "PII LLM'e hiç gitmesin + kullanıcı orijinali görsün" isteniyorsa → `ANTHROPIC_BASE_URL` ile lokal proxy yaklaşımı gerekir (bu repo'da yok, ileride v2).
+## Architectural Limit (read before installing)
 
-## Kurulum
+Claude Code hooks **cannot rewrite a prompt** and **cannot intercept the LLM response**.
+This integration therefore implements **detection + selective blocking + audit logging**, not
+true bidirectional masking. PII in a `warn` category still reaches the Anthropic API.
 
-### Sunucuyu kur (tek seferlik)
+If you need "PII never reaches the LLM but is visible in the output", that requires an
+`ANTHROPIC_BASE_URL` proxy approach — out of scope for v1.
+
+---
+
+## Requirements
+
+| Component         | Minimum                                                   |
+|-------------------|-----------------------------------------------------------|
+| OS                | Windows 10/11 (PowerShell 7+). Linux/macOS straightforward to port. |
+| PowerShell        | `pwsh` 7.0+ on `PATH`                                     |
+| Python            | 3.10+                                                     |
+| Disk              | ~3 GB for the Privacy Filter model weights                |
+| Memory            | 4 GB RAM minimum (CPU). GPU optional.                     |
+| Claude Code       | Any recent version that supports `hooks` in `settings.json` |
+
+---
+
+## Installation
+
+The installation is two-staged: **server is per-machine, hook is per-project**.
+
+### 1. Install the server (one-time, per machine)
+
+From the repo root:
 
 ```powershell
 pwsh $REPO/integrations/claude-code/install/install-server.ps1
 ```
 
-- venv oluşturur (`.venv/`)
-- Python bağımlılıklarını kurar (transformers, torch, fastapi, uvicorn)
-- HuggingFace'ten modeli indirir (~3 GB; lokal cache: `~/.cache/huggingface/`)
+This script:
 
-> Model ID varsayılan olarak `openai/privacy-filter`. Farklı bir checkpoint için: `$env:PRIVACY_FILTER_MODEL = "...";` sonra installer'ı çalıştır.
+1. Creates a Python venv at `$REPO/integrations/claude-code/.venv/`
+2. Installs dependencies (`transformers`, `torch`, `fastapi`, `uvicorn`, `pydantic`)
+3. Downloads the model from HuggingFace (default: `openai/privacy-filter`, ~3 GB) into
+   `~/.cache/huggingface/`
 
-### Sunucuyu başlat
+To use a different model checkpoint:
 
 ```powershell
-# Foreground (geliştirme)
-pwsh $REPO/integrations/claude-code/server/start-server.ps1
-
-# Background (her oturum öncesi başlat)
-pwsh $REPO/integrations/claude-code/server/start-server.ps1 -Background
+$env:PRIVACY_FILTER_MODEL = "your-org/your-checkpoint"
+pwsh $REPO/integrations/claude-code/install/install-server.ps1
 ```
 
-Bağlanır: `http://127.0.0.1:8765` (sadece localhost).
-
-### Bir projeye hook'u aktive et
+### 2. Activate the hook in a project (per project)
 
 ```powershell
-cd C:/kt/intellica-bva
+cd C:/path/to/your-project
 pwsh $REPO/integrations/claude-code/install/install-project.ps1
 ```
 
-Yapılan değişiklikler:
-- `<proje>/.claude/settings.json` → `hooks.UserPromptSubmit` array'ine entry eklenir (mevcut hook'lar korunur)
-- `<proje>/.claude/pii-policy.yaml` → default politika kopyalanır
-- `<proje>/.gitignore` → audit dosyaları ve PID dosyaları eklenir
+This script:
 
-### Bir projeden kaldır
+- Creates `<project>/.claude/` if missing
+- Merges a hook entry into `<project>/.claude/settings.json` under
+  `hooks.UserPromptSubmit` (existing hooks are preserved)
+- Copies the default policy file to `<project>/.claude/pii-policy.yaml` (kept if it already
+  exists; pass `-Force` to overwrite)
+- Appends a few entries to `<project>/.gitignore` (audit files, server PID/log)
+- Runs a health check against `http://127.0.0.1:8765`
+
+### 3. Uninstall (per project)
 
 ```powershell
-pwsh $REPO/integrations/claude-code/install/uninstall.ps1 -ProjectPath C:/kt/intellica-bva
-# -RemovePolicy bayrağı policy dosyasını da siler
+pwsh $REPO/integrations/claude-code/install/uninstall.ps1 -ProjectPath C:/path/to/your-project
+# Add -RemovePolicy to also delete .claude/pii-policy.yaml
 ```
 
-## Politika Düzenleme
+---
 
-`<proje>/.claude/pii-policy.yaml` örneği:
+## Running
+
+### Start the server
+
+```powershell
+# Foreground (useful while developing)
+pwsh $REPO/integrations/claude-code/server/start-server.ps1
+
+# Background (recommended for daily use; PID written to $REPO/.server.pid)
+pwsh $REPO/integrations/claude-code/server/start-server.ps1 -Background
+```
+
+The server binds to `http://127.0.0.1:8765` (localhost only — never exposed to the network).
+
+Cold start takes 5–10 s while the model loads; subsequent requests are 100–500 ms on CPU.
+
+### Use Claude Code normally
+
+Just open Claude Code inside an installed project — the hook runs automatically on every
+prompt. Three outcomes are possible:
+
+1. **Clean prompt** → hook exits silently, Claude responds as usual.
+2. **PII in a `warn` category** → Claude receives an extra `additionalContext` message such as:
+   > "[PII WARNING] This user prompt was flagged for: private_person (1), private_email (1).
+   > Avoid echoing this sensitive data back; refer to it abstractly."
+3. **PII in a `block` category** → prompt is cancelled with an error message like:
+   > `PII blocked: secret category detected (confidence >= 0.85). Policy: ...`
+
+You will see the rejection in the Claude Code terminal; nothing is sent to Anthropic.
+
+### Verify it is working
+
+```powershell
+# Health
+Invoke-RestMethod http://127.0.0.1:8765/health
+# → status=ok, model_loaded=True, device=cpu|cuda
+
+# Direct detection probe
+$body = @{ text = "Email me at jane@example.com please" } | ConvertTo-Json
+Invoke-RestMethod http://127.0.0.1:8765/detect -Method POST `
+    -ContentType "application/json" -Body $body
+# → detections=[{ category=private_email, ... }], masked="Email me at [PRIVATE_EMAIL_1] please"
+```
+
+---
+
+## Configuration
+
+The per-project policy lives at `<project>/.claude/pii-policy.yaml`. A minimal example:
 
 ```yaml
 server:
@@ -75,8 +160,8 @@ server:
   timeout_ms: 5000
 
 categories:
-  secret: block            # API key, parola
-  account_number: block    # IBAN, kart, TC kimlik
+  secret: block            # API keys, passwords, tokens
+  account_number: block    # IBAN, card numbers, national IDs
   private_person: warn
   private_email: warn
   private_phone: warn
@@ -84,9 +169,9 @@ categories:
   private_url: ignore
   private_date: ignore
 
-confidence_threshold: 0.85
-min_prompt_length: 20      # bundan kısa promptlar atlanır
-fail_open: true            # sunucu unreachable ise prompt geçer (false = blok)
+confidence_threshold: 0.85   # detections below this are dropped
+min_prompt_length: 20        # prompts shorter than this are skipped (latency)
+fail_open: true              # if server is unreachable, allow the prompt through
 
 audit:
   enabled: true
@@ -94,73 +179,107 @@ audit:
   rotate_days: 30
 ```
 
-Daha agresif bir politika için `config/policy.example.yaml`'a bakın.
+For an aggressive setup that blocks every category, see
+[`config/policy.example.yaml`](config/policy.example.yaml).
+
+Policy resolution order:
+
+1. `<project>/.claude/pii-policy.yaml` (per-project)
+2. `$REPO/integrations/claude-code/config/policy.default.yaml` (fallback)
+
+---
 
 ## Audit Log
 
-Format: `~/.claude-pii-audit/YYYY-MM-DD.jsonl`, her satır bir JSON.
+Path: `~/.claude-pii-audit/YYYY-MM-DD.jsonl`. One JSON object per line:
 
 ```jsonc
 {
   "ts": "2026-05-20T14:32:11Z",
   "session": "abc123",
-  "cwd": "C:/kt/intellica-bva",
-  "action": "warn",                    // allow|warn|block|server_unavailable|error
+  "cwd": "C:/path/to/project",
+  "action": "warn",                       // allow|warn|block|server_unavailable|error
   "categories": ["private_person", "private_email"],
   "detection_count": 3,
-  "prompt_hash": "sha256:8f3a...",     // ham prompt asla kaydedilmez
+  "prompt_hash": "sha256:8f3a...",        // raw prompt is NEVER stored
   "prompt_chars": 142
 }
 ```
 
-## Test
+Files older than `audit.rotate_days` are pruned opportunistically on each hook invocation.
+
+---
+
+## Testing
+
+Two layers — neither requires the model to be downloaded:
 
 ```powershell
-# Unit testler (pipeline + masking)
+# Pure-function unit tests (BIOES decoder + token masking)
 cd $REPO/integrations/claude-code
 .\.venv\Scripts\Activate.ps1
 pip install pytest
 python -m pytest tests/test_pipeline.py -v
 
-# Hook integration test (mock HTTP listener kullanır, gerçek modele ihtiyaç yok)
+# Hook integration test (mocks the HTTP server; covers clean/warn/block paths)
 pwsh tests/test_hook.ps1
 ```
 
-## Performans
+`tests/fixtures/tr_samples.txt` ships Turkish PII samples (IBAN, national ID, phone, card,
+secrets) you can use for manual end-to-end checks once the real model is loaded.
 
-| Donanım | İlk inference | Sonraki inference |
-|---|---|---|
-| CPU (Intel i7) | 2-5 sn | 200-500 ms |
-| GPU (RTX 3060+) | ~1 sn | <100 ms |
+---
 
-`min_prompt_length: 20` ile kısa komutlar (`/clear`, `ls`, vb.) atlanır → ortalama gecikme düşer.
+## Performance
+
+| Hardware              | First inference | Steady-state inference |
+|-----------------------|-----------------|------------------------|
+| CPU (Intel i7, 8c)    | 2–5 s           | 200–500 ms             |
+| GPU (RTX 3060+)       | ~1 s            | < 100 ms               |
+
+The `min_prompt_length: 20` setting skips short commands (`/clear`, `ls`, etc.) so most
+keystroke-level prompts incur zero overhead.
+
+---
 
 ## Troubleshooting
 
-**Hook çalışmıyor:**
-- `pwsh -NoProfile -File $REPO/integrations/claude-code/hook/mask-pii-hook.ps1 < test.json` ile manuel test edin.
-- Claude Code'un hangi PowerShell'i çağırdığını kontrol edin (`pwsh` PATH'te olmalı).
+**Hook does not appear to run**
+- Manually invoke it: `Get-Content test.json | pwsh -NoProfile -File $REPO/integrations/claude-code/hook/mask-pii-hook.ps1`
+- Ensure `pwsh` 7+ is on `PATH` (Claude Code launches the hook command verbatim).
+- Inspect `<project>/.claude/settings.json` to confirm the entry was merged.
 
-**Server unreachable:**
-- `Invoke-RestMethod http://127.0.0.1:8765/health` ile elle kontrol edin.
-- `.server.log` dosyasını inceleyin.
-- 8765 portu başka bir process tarafından tutuluyor olabilir → port'u policy'de değiştirin ve `start-server.ps1 -Port 8766` ile başlatın.
+**Server unreachable**
+- `Invoke-RestMethod http://127.0.0.1:8765/health` to probe directly.
+- Check `$REPO/.server.log` for stack traces.
+- Port 8765 already in use? Start with `-Port 8766` and update `server.url` in the policy.
 
-**False positive ("Ali" → private_person):**
-- `confidence_threshold`'u 0.85'ten 0.90+'a çıkarın.
-- Veya o kategoriyi `ignore` yapın projeye özel policy'de.
+**False positives (e.g. common given names flagged as `private_person`)**
+- Raise `confidence_threshold` from `0.85` toward `0.92+`.
+- Or set the offending category to `ignore` in the project policy.
 
-**KVKK/uyumluluk:**
-- Bu çözüm **uyumluluk sertifikası değildir**. Defense-in-depth katmanıdır.
-- Warn modunda PII hala Anthropic'e gider. Tam izolasyon için proxy yaklaşımı (v2) gerekir.
+**Compliance disclaimer**
+This integration is a defense-in-depth layer, not a compliance certification. In `warn`
+mode the original PII still reaches the Anthropic API. For true isolation, a proxy-based
+architecture is required (out of scope here).
 
-## Lisans
+---
 
-Bu repo: MIT. Privacy Filter modeli: Apache 2.0 (OpenAI).
+## What's Next
 
-## Out of Scope (gelecek planlar)
+Possible follow-ups, none of which are implemented yet:
 
-- `ANTHROPIC_BASE_URL` proxy ile gerçek iki-yönlü maskeleme
-- `PreToolUse.updatedInput` ile Read/Bash arg masking
-- TR-özel fine-tune (TC kimlik, plaka, PNR, IBAN)
-- Claude Desktop entegrasyonu (Desktop hook desteklemiyor)
+- `ANTHROPIC_BASE_URL` proxy for full bidirectional masking
+- `PreToolUse.updatedInput` to mask arguments passed to `Read` / `Bash`
+- Domain fine-tunes (e.g. Turkish national ID, license plates, PNR codes)
+- Claude Desktop support (Desktop has no hook system; needs the proxy approach)
+
+---
+
+## License & Attribution
+
+- This integration: **Apache 2.0** (same as upstream).
+- Upstream model and library: **OpenAI Privacy Filter** — <https://github.com/openai/privacy-filter>
+- Announcement: <https://openai.com/index/introducing-openai-privacy-filter/>
+
+See [`NOTICE.md`](NOTICE.md) for full provenance.
