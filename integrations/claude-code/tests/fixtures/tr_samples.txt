@@ -1,0 +1,31 @@
+# Türkçe PII test örnekleri (her satır bir test cümlesi; # ile başlayan satırlar yorum)
+
+# Kişi + telefon
+Ayşe Yılmaz arasın, telefonu 0541 234 56 78.
+
+# IBAN
+Maaş hesabım TR33 0006 1005 1978 6457 8413 26, kontrol edebilir misin?
+
+# TC kimlik (geçersiz örnek - synthetic)
+TC kimlik numaram 12345678901 olarak görünüyor mu sistemde?
+
+# Kart no
+Kart numaram 4111 1111 1111 1111, son kullanma 12/28.
+
+# Email + adres
+Lütfen ali.veli@firma.com.tr adresine fatura gönder, adres: Atatürk Cad. No:42 Kadıköy/İstanbul.
+
+# Secret
+OPENAI_API_KEY=sk-proj-test-abcdef1234567890 değerini .env'ye yazdım.
+
+# Birden fazla kategori karışık
+Müşteri Mehmet Demir (mdemir@bva.tcdd.gov.tr, 0532 999 11 22) bagaj kaydı için arıyor; PNR ABC123, kart 5500 0000 0000 0004.
+
+# Sadece tarih (ignore beklenir)
+Lansman 15 Haziran 2026 olarak teyit edildi.
+
+# Sadece URL (ignore beklenir)
+Bkz https://docs.example.com/privacy
+
+# Temiz (PII yok)
+Bu projenin amacı satış raporlarını DWH'tan günlük çekmek.

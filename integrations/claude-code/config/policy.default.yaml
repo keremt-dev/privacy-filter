@@ -1,0 +1,32 @@
+# OpenAI Privacy Filter - Claude Code Hook Politikası (varsayılan)
+# Bu dosya proje .claude/pii-policy.yaml'a kopyalanır; orada düzenlenebilir.
+
+server:
+  url: "http://127.0.0.1:8765"
+  timeout_ms: 5000
+  auto_start: true
+
+# Kategori davranışı: block | warn | ignore
+categories:
+  secret: block            # API key, parola, token
+  account_number: block    # IBAN, kart no, TC kimlik, hesap no
+  private_person: warn
+  private_email: warn
+  private_phone: warn
+  private_address: warn
+  private_url: ignore
+  private_date: ignore
+
+# Minimum confidence eşiği (0.0 - 1.0)
+confidence_threshold: 0.85
+
+# Bu uzunluktan kısa promptları atla (kısa komutlar için latency tasarrufu)
+min_prompt_length: 20
+
+# Fail-open: sunucu erişilemezse prompt geçer (true) veya bloklanır (false)
+fail_open: true
+
+audit:
+  enabled: true
+  dir: "~/.claude-pii-audit"
+  rotate_days: 30

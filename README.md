@@ -97,6 +97,18 @@ Consult `opf train --help` for more flags and information about the finetuning m
 - `OUTPUT_SCHEMAS.md`: JSON response and export payload formats.
 - `EVAL_AND_OUTPUT_MODES.md`: description of the output modes for redaction and evaluation.
 
+## Community Integrations
+
+Drop-in adapters that wire Privacy Filter into developer tooling. These live
+under [`integrations/`](integrations/) and are maintained alongside this fork.
+
+| Integration | Path | Description |
+|---|---|---|
+| **Claude Code hook** | [`integrations/claude-code/`](integrations/claude-code/) | Runs Privacy Filter as a local FastAPI service and registers a `UserPromptSubmit` hook in any Claude Code project. PII detected in a user prompt either injects an `additionalContext` warning for the model (e.g. names, emails) or blocks the prompt outright (secrets, account numbers). Configurable per-project YAML policy + SHA-256-hashed audit log. See its [README](integrations/claude-code/README.md) for install and usage. |
+
+Contributions of additional integrations are welcome via PR against the
+`integrations/` tree.
+
 ## Model Details
 
 ### Model Description

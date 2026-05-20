@@ -1,0 +1,18 @@
+# Local Python venv (installer creates this under integrations/claude-code/)
+.venv/
+
+# Server runtime artifacts
+.server.pid
+.server.log
+
+# Cached model files (HF cache lives in ~/.cache/huggingface)
+*.pyc
+__pycache__/
+*.egg-info/
+
+# Local-only policy overrides
+config/policy.local.yaml
+.claude/pii-policy.yaml.local
+
+# pytest
+.pytest_cache/
