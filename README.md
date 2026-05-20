@@ -108,6 +108,7 @@ under [`integrations/`](integrations/) and are maintained alongside this fork.
 
 Contributions of additional integrations are welcome via PR against the
 `integrations/` tree.
+<img width="1785" height="898" alt="image" src="https://github.com/user-attachments/assets/ee7729d3-cdcc-4143-b8e9-a762e6bd6578" />
 
 ## Model Details
 
